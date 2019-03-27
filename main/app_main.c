@@ -59,6 +59,9 @@ void timer_periodic_cb(void *arg) //200ms中断一次
       {
         human_status=HAVEHUMAN;
         printf("human_status1=%d\n",human_status);
+        
+        //need_send=1;
+
         havehuman_count=0;
         nohuman_timer_count=0;
       }  
@@ -118,8 +121,10 @@ static void Uart0_Task(void* arg)
     while(1)
     {
         Uart0_read();
+
         vTaskDelay(10 / portTICK_RATE_MS);
     }  
+
 }
 
   /*
@@ -134,6 +139,7 @@ static void Uart0_Task(void* arg)
 
 
 
+
 void app_main(void)
 {
   nvs_flash_init(); //初始化flash
@@ -144,42 +150,77 @@ void app_main(void)
   mqtt_json_s.mqtt_angle  = -1;
 
 
-  //Led_Init();
+
+  
   //Motor_Init();
-  Wind_Init();
-  Wallkey_Init();
+  //Wind_Init();
+  //Wallkey_Init();
+
   //Led_On();
-  //E2prom_Init();
+  E2prom_Init();
   //Fire_Init();
-  //Uart0_Init();
+  Uart0_Init();
   Human_Init();
 
-  strcpy(SerialNum,"AAA0001HUM1");
-  strcpy(ProductId,"28343913545840b3b9b42c568e78e243");
+//   strcpy(SerialNum,"AAA0003HUM1");
+//   strcpy(ProductId,"28343913545840b3b9b42c568e78e243");
 
-
-  //模拟清空序列号，串口烧写
-  //uint8_t data_write[16] = "\0";
-  //E2prom_Write(0x30, data_write, 16);
+  Led_Init();
+//   //模拟清空序列号，串口烧写
+//   uint8_t data_write[16] = "\0";
+//   E2prom_Write(0x30, data_write, 16);
   
-  //模拟清空Productid，串口烧写
-  //uint8_t data_write1[32] = "\0";
-  //E2prom_Write(0x40, data_write1, 32); 
+//   //模拟清空Productid，串口烧写
+//   uint8_t data_write1[32] = "\0";
+//   E2prom_Write(0x40, data_write1, 32); 
   
-  //模拟清空API-KEY存储，激活后获取
-  //uint8_t data_write2[33]="\0";
-  //E2prom_Write(0x00, data_write2, 32);
+//   //模拟清空API-KEY存储，激活后获取
+//   uint8_t data_write2[33]="\0";
+//   E2prom_Write(0x00, data_write2, 32);
 
-  //模拟清空channelid，激活后获取
-  //uint8_t data_write3[16]="\0";
-  //E2prom_Write(0x20, data_write3, 16);
+//   //模拟清空channelid，激活后获取
+//   uint8_t data_write3[16]="\0";
+//   E2prom_Write(0x20, data_write3, 16);
+
+ xTaskCreate(Uart0_Task, "Uart0_Task", 4096, NULL, 10, NULL);
+
+  /*step1 判断是否有序列号和product id****/
+  E2prom_Read(0x30, (uint8_t *)SerialNum, 16);
+  printf("SerialNum=%s\n", SerialNum);
+
+  E2prom_Read(0x40, (uint8_t *)ProductId, 32);
+  printf("ProductId=%s\n", ProductId);
+
+
+  if ((SerialNum[0] == 0xff) && (SerialNum[1] == 0xff)) //新的eeprom，先清零
+  {
+    printf("new eeprom\n");
+    char zero_data[512];
+    bzero(zero_data, sizeof(zero_data));
+    E2prom_Write(0x00, (uint8_t *)zero_data, 256);
+    E2prom_BluWrite(0x00, (uint8_t *)zero_data, 512); //清空蓝牙
+
+    E2prom_Read(0x30, (uint8_t *)SerialNum, 16);
+    printf("SerialNum=%s\n", SerialNum);
+
+    E2prom_Read(0x40, (uint8_t *)ProductId, 32);
+    printf("ProductId=%s\n", ProductId);
+  }
+
+  if ((strlen(SerialNum) == 0) || (strlen(ProductId) == 0)) //未获取到序列号或productid，未烧写序列号
+  {
+    printf("no SerialNum or product id!\n");
+    while (1)
+    {
+      //故障灯
+      Led_Status = LED_STA_NOSER;
+      vTaskDelay(500 / portTICK_RATE_MS);
+    }
+  }
 
 
   strncpy(ble_dev_pwd,SerialNum+3,4);
   printf("ble_dev_pwd=%s\n", ble_dev_pwd);
-
-
-
 
   ble_app_start();
   init_wifi();
@@ -197,12 +238,20 @@ void app_main(void)
   if (err != ESP_OK)
   {
     printf("timer periodic create err code:%d\n", err);
+
   }
+  else
+  {
+
+  }
+  
 
   xTaskCreate(Human_Task, "Human_Task", 8192, NULL, 5, NULL);
   
 
   initialise_http();
   initialise_mqtt();
+
+  //Led_Status =  LED_STA_INIT;
 
 }
